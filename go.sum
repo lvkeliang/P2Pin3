@@ -1,0 +1,4 @@
+github.com/jackpal/bencode-go v1.0.0 h1:lzbSPPqqSfWQnqVNe/BBY1NXdDpncArxShL10+fmFus=
+github.com/jackpal/bencode-go v1.0.0/go.mod h1:5FSBQ74yhCl5oQ+QxRPYzWMONFnxbL68/23eezsBI5c=
+github.com/lvkeliang/P2Pin2 v0.0.0-20230728085841-973f23a0d8aa h1:gKc+jwIPWDrR/p7H47AqUj06Z/aCXNgBckWI6PhjjKw=
+github.com/lvkeliang/P2Pin2 v0.0.0-20230728085841-973f23a0d8aa/go.mod h1:x56s+2KeHWu2GP4X0E3nNL4sQxm0iuJC+ob3anMTjZs=
