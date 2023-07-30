@@ -199,6 +199,7 @@ func (t *Torrent) Download() ([]byte, error) {
 	// Collect results into a buffer until full
 	buf := make([]byte, t.Length)
 	donePieces := 0
+	startTime := time.Now()
 	for donePieces < len(t.PieceHashes) {
 		res := <-results
 		begin, end := t.calculateBoundsForPiece(res.index)
@@ -206,11 +207,14 @@ func (t *Torrent) Download() ([]byte, error) {
 		donePieces++
 
 		percent := float64(donePieces) / float64(len(t.PieceHashes)) * 100
+		elapsedTime := time.Since(startTime).Seconds()
+		downloadSpeed := float64(begin) / elapsedTime
 		//fmt.Println("pieceNum: ", len(t.PieceHashes))
 		numWorkers := runtime.NumGoroutine() - 3 // subtract 1 for main thread
-		fmt.Printf("\r(%0.2f%%) Downloaded piece #%d from %d peers", percent, res.index, numWorkers)
+		fmt.Printf("\r(%0.2f%%) 下载了第 #%d 块，来自 %d 个节点，速度: %0.2f MB/s", percent, res.index, numWorkers, downloadSpeed/1048576)
 		//log.Printf("(%0.2f%%) Downloaded piece #%d from %d peers\n", percent, res.index, numWorkers)
 	}
+
 	fmt.Printf("\n")
 	close(workQueue)
 

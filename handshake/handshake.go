@@ -1,8 +1,12 @@
 package handshake
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/lvkeliang/P2Pin2/handshake"
 	"io"
+	"net"
+	"time"
 )
 
 // A Handshake is a special message that a peer uses to identify itself
@@ -65,4 +69,36 @@ func Read(r io.Reader) (*Handshake, error) {
 	}
 
 	return &h, nil
+}
+
+func PeerHandshake(conn net.Conn, hashmap map[[20]byte]string, peerID [20]byte) (res *handshake.Handshake, filePath string, err error) {
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	defer conn.SetDeadline(time.Time{}) // Disable the deadline
+
+	res, err = handshake.Read(conn)
+	if err != nil {
+		return nil, "", fmt.Errorf("%v\n", err)
+	}
+
+	var infoHash [20]byte
+
+	flag := false
+	for infoHash, filePath = range hashmap {
+		if bytes.Equal(res.InfoHash[:], infoHash[:]) {
+			flag = true
+			break
+		}
+	}
+
+	if flag {
+		req := handshake.New(infoHash, peerID)
+		_, err := conn.Write(req.Serialize())
+		if err != nil {
+			return nil, "", err
+		}
+		return res, filePath, nil
+	} else {
+		return nil, "", fmt.Errorf("no file matches with infohash: %v\n", res.InfoHash)
+	}
+
 }

@@ -145,3 +145,31 @@ func (c *Client) SendPiece(index, begin int, block []byte) error {
 	_, err := c.Conn.Write(msg)
 	return err
 }
+
+// ParseRequest parses a REQUEST message
+func ParseRequest(msg *logic.Message) (index, begin, length int, err error) {
+	if msg.ID != logic.MsgRequest {
+		if msg.ID == logic.MsgHave {
+			return
+		}
+		err = fmt.Errorf("Expected REQUEST (ID %d), got ID %d", logic.MsgRequest, msg.ID)
+		return
+	}
+	if len(msg.Payload) != 12 {
+		err = fmt.Errorf("Expected payload length 12, got %d", len(msg.Payload))
+		return
+	}
+	index = int(binary.BigEndian.Uint32(msg.Payload[0:4]))
+	begin = int(binary.BigEndian.Uint32(msg.Payload[4:8]))
+	length = int(binary.BigEndian.Uint32(msg.Payload[8:12]))
+	return
+}
+
+func SendMessage(c net.Conn, payload []byte) error {
+	msg := &logic.Message{
+		ID:      logic.MsgPiece,
+		Payload: payload,
+	}
+	_, err := c.Write(msg.Serialize())
+	return err
+}

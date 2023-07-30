@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"github.com/lvkeliang/P2Pin3/application"
 	"github.com/lvkeliang/P2Pin3/bitfield"
 	"github.com/lvkeliang/P2Pin3/handshake"
 	"github.com/lvkeliang/P2Pin3/logic"
@@ -15,8 +16,27 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"time"
 )
+
+func main() {
+	var torrentPath = "./have/"
+	var hashmapPath = "./hashmap/hashmap.json"
+	//var dataPath = "./testdata/"
+
+	listener, err := net.Listen("tcp", "localhost:8097")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer listener.Close()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go handleConnection2(conn, hashmapPath, torrentPath)
+	}
+}
 
 type TorrentFile struct {
 	InfoHash    [20]byte   `json:"info_hash"`
@@ -46,38 +66,6 @@ func getBitfield(conn net.Conn, pieceLength int, file os.File) (bitfield []byte,
 
 	_, err = conn.Write(msg)
 	return bitfield, err
-}
-
-func Handshake(conn net.Conn, hashmap map[[20]byte]string, peerID [20]byte) (res *handshake.Handshake, filePath string, err error) {
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
-	defer conn.SetDeadline(time.Time{}) // Disable the deadline
-
-	res, err = handshake.Read(conn)
-	if err != nil {
-		return nil, "", fmt.Errorf("%v\n", err)
-	}
-
-	var infoHash [20]byte
-
-	flag := false
-	for infoHash, filePath = range hashmap {
-		if bytes.Equal(res.InfoHash[:], infoHash[:]) {
-			flag = true
-			break
-		}
-	}
-
-	if flag {
-		req := handshake.New(infoHash, peerID)
-		_, err := conn.Write(req.Serialize())
-		if err != nil {
-			return nil, "", err
-		}
-		return res, filePath, nil
-	} else {
-		return nil, "", fmt.Errorf("no file matches with infohash: %v\n", res.InfoHash)
-	}
-
 }
 
 // IntToBytesBigEndian int 转大端 []byte
@@ -128,37 +116,9 @@ func IntToBytesBigEndian(n int64, bytesLength byte) ([]byte, error) {
 	return nil, fmt.Errorf("IntToBytesBigEndian b param is invaild")
 }
 
-// ParseRequest parses a REQUEST message
-func ParseRequest(msg *logic.Message) (index, begin, length int, err error) {
-	if msg.ID != logic.MsgRequest {
-		if msg.ID == logic.MsgHave {
-			return
-		}
-		err = fmt.Errorf("Expected REQUEST (ID %d), got ID %d", logic.MsgRequest, msg.ID)
-		return
-	}
-	if len(msg.Payload) != 12 {
-		err = fmt.Errorf("Expected payload length 12, got %d", len(msg.Payload))
-		return
-	}
-	index = int(binary.BigEndian.Uint32(msg.Payload[0:4]))
-	begin = int(binary.BigEndian.Uint32(msg.Payload[4:8]))
-	length = int(binary.BigEndian.Uint32(msg.Payload[8:12]))
-	return
-}
-
-func SendMessage(c net.Conn, payload []byte) error {
-	msg := &logic.Message{
-		ID:      logic.MsgPiece,
-		Payload: payload,
-	}
-	_, err := c.Write(msg.Serialize())
-	return err
-}
-
 // SendPiece sends a PIECE message
 func SendPiece(c net.Conn, msg *logic.Message, file *os.File, pieceLength int) error {
-	index, begin, length, err := ParseRequest(msg)
+	index, begin, length, err := application.ParseRequest(msg)
 
 	if err != nil {
 		return err
@@ -171,7 +131,7 @@ func SendPiece(c net.Conn, msg *logic.Message, file *os.File, pieceLength int) e
 	if err != nil {
 		return err
 	}
-	SendMessage(c, buf)
+	application.SendMessage(c, buf)
 	return nil
 }
 
@@ -190,7 +150,7 @@ func handleConnection2(conn net.Conn, hashmapPath, torrentPath string) {
 	}
 
 	// 处理握手
-	_, filePath, err := Handshake(conn, hashmap, peerID)
+	_, filePath, err := handshake.PeerHandshake(conn, hashmap, peerID)
 	if err != nil {
 		conn.Close()
 		return
@@ -257,7 +217,7 @@ func handleConnection2(conn net.Conn, hashmapPath, torrentPath string) {
 
 	go func() {
 		for req := range requests {
-			index, begin, length, _ := ParseRequest(&req)
+			index, begin, length, _ := application.ParseRequest(&req)
 			//file, err := os.Open(filePath)
 			if err != nil {
 				log.Fatal(err)
@@ -298,31 +258,11 @@ func handleConnection2(conn net.Conn, hashmapPath, torrentPath string) {
 			continue
 		}
 
-		i, j, k, err := ParseRequest(msg)
+		i, j, k, err := application.ParseRequest(msg)
 		fmt.Printf("msg: index : %v, begin %v, length %v, err %v\n", i, j, k, err)
 		switch msg.ID {
 		case logic.MsgRequest:
 			requests <- *msg
 		}
-	}
-}
-
-func main() {
-	var torrentPath = "./have/"
-	var hashmapPath = "./hashmap/hashmap.json"
-	//var dataPath = "./testdata/"
-
-	listener, err := net.Listen("tcp", "localhost:8097")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer listener.Close()
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go handleConnection2(conn, hashmapPath, torrentPath)
 	}
 }
