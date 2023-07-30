@@ -162,13 +162,6 @@ func (m *Message) name() string {
 	}
 }
 
-func (m *Message) String() string {
-	if m == nil {
-		return m.name()
-	}
-	return fmt.Sprintf("%s [%d]", m.name(), len(m.Payload))
-}
-
 // Peer encodes connection information for a peer
 type Peer struct {
 	IP   net.IP

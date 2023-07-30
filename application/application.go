@@ -135,17 +135,6 @@ func (c *Client) SendHave(index int) error {
 	return err
 }
 
-func (c *Client) SendPiece(index, begin int, block []byte) error {
-	msg := make([]byte, 13+len(block))
-	msg[0] = 9 + byte(len(block))
-	msg[4] = byte(logic.MsgPiece)
-	binary.BigEndian.PutUint32(msg[5:9], uint32(index))
-	binary.BigEndian.PutUint32(msg[9:13], uint32(begin))
-	copy(msg[13:], block)
-	_, err := c.Conn.Write(msg)
-	return err
-}
-
 // ParseRequest parses a REQUEST message
 func ParseRequest(msg *logic.Message) (index, begin, length int, err error) {
 	if msg.ID != logic.MsgRequest {

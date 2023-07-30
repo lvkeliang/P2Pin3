@@ -11,7 +11,7 @@ func main() {
 	//inPath := "F:\\torrent\\[ANi] 殭屍 100～在成為殭屍前要做的 100 件事～ - 01 [1080P][Baha][WEB-DL][AAC AVC][CHT].mp4.torrent"
 	outPath := "./downloaded/"
 	var hashmapPath = "./hashmap/hashmap.json"
-	name := "[Nekomoe kissaten][The iDOLM@STER CINDERELLA GIRLS U149][11][1080p][JPSC].mp4"
+	name := "[Sakurato] Kono Subarashii Sekai ni Bakuen wo! [12][AVC-8bit 1080p AAC][CHS].mp4"
 
 	filePath := "./testdata/" + name
 	newtorrent, err := torrent.NewTorrentFile(filePath, "http://localhost:8090/announce", 12*1024)

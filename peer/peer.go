@@ -34,38 +34,8 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		go handleConnection2(conn, hashmapPath, torrentPath)
+		go handleConnection(conn, hashmapPath, torrentPath)
 	}
-}
-
-type TorrentFile struct {
-	InfoHash    [20]byte   `json:"info_hash"`
-	PieceHashes [][20]byte `json:"piece_hashes"`
-}
-
-func getBitfield(conn net.Conn, pieceLength int, file os.File) (bitfield []byte, err error) {
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	totalPieces := int(fileInfo.Size()) / pieceLength
-	if int(fileInfo.Size())%pieceLength != 0 {
-		totalPieces++
-	}
-
-	bitfield = make([]byte, totalPieces/8+1)
-	for i := 0; i < totalPieces; i++ {
-		bitfield[i/8] |= 1 << (7 - uint(i%8))
-	}
-
-	msg := make([]byte, len(bitfield)+5)
-	msg[0] = byte(len(bitfield) + 1)
-	msg[4] = byte(logic.MsgBitfield)
-	copy(msg[5:], bitfield)
-
-	_, err = conn.Write(msg)
-	return bitfield, err
 }
 
 // IntToBytesBigEndian int 转大端 []byte
@@ -116,26 +86,7 @@ func IntToBytesBigEndian(n int64, bytesLength byte) ([]byte, error) {
 	return nil, fmt.Errorf("IntToBytesBigEndian b param is invaild")
 }
 
-// SendPiece sends a PIECE message
-func SendPiece(c net.Conn, msg *logic.Message, file *os.File, pieceLength int) error {
-	index, begin, length, err := application.ParseRequest(msg)
-
-	if err != nil {
-		return err
-	}
-	buf := make([]byte, length+8)
-	binary.BigEndian.PutUint32(buf[0:4], uint32(index))
-	binary.BigEndian.PutUint32(buf[4:8], uint32(begin))
-	_, err = file.ReadAt(buf[8:], int64(index*pieceLength))
-	//fmt.Println("buf: ", string(buf[8:]))
-	if err != nil {
-		return err
-	}
-	application.SendMessage(c, buf)
-	return nil
-}
-
-func handleConnection2(conn net.Conn, hashmapPath, torrentPath string) {
+func handleConnection(conn net.Conn, hashmapPath, torrentPath string) {
 	defer conn.Close()
 
 	var peerID [20]byte
