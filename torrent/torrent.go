@@ -78,6 +78,8 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 	if err != nil {
 		return err
 	}
+
+	updateInfoHash(t.InfoHash, path, "./hashmap/hashmap.json")
 	return nil
 }
 
@@ -300,4 +302,52 @@ func NewTorrentFile(filename, announce string, pieceLength int) (*TorrentFile, e
 	}
 
 	return torrentFile, nil
+}
+
+func updateInfoHash(infoHash [20]byte, filePath string, infoHashPath string) error {
+	infoHashMap, err := ReadInfoHashFile(infoHashPath)
+	if err != nil {
+		return err
+	}
+
+	infoHashMap[filePath] = infoHash
+
+	err = writeInfoHashFile(infoHashMap, infoHashPath)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ReadInfoHashFile(infoHashPath string) (map[string][20]byte, error) {
+	infoHashMap := make(map[string][20]byte)
+
+	data, err := ioutil.ReadFile(infoHashPath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	if len(data) > 0 {
+		err = json.Unmarshal(data, &infoHashMap)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return infoHashMap, nil
+}
+
+func writeInfoHashFile(infoHashMap map[string][20]byte, infoHashPath string) error {
+	data, err := json.Marshal(infoHashMap)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(infoHashPath, data, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

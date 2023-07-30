@@ -135,11 +135,13 @@ func (t *Torrent) startDownloadWorker(peer logic.Peer, workQueue chan *pieceWork
 		return
 	}
 	defer c.Conn.Close()
-	log.Printf("Completed handshake with %s\n", peer.IP)
 	c.SendUnchoke()
 	c.SendInterested()
 	for pw := range workQueue {
+		// fmt.Println("pw: ", *pw)
 		if !c.Bitfield.HasPiece(pw.index) {
+
+			log.Printf("Completed handshake with %s\n", peer.IP)
 			workQueue <- pw // Put piece back on the queue
 			continue
 		}
@@ -204,11 +206,12 @@ func (t *Torrent) Download() ([]byte, error) {
 		donePieces++
 
 		percent := float64(donePieces) / float64(len(t.PieceHashes)) * 100
+		//fmt.Println("pieceNum: ", len(t.PieceHashes))
 		numWorkers := runtime.NumGoroutine() - 3 // subtract 1 for main thread
-		//fmt.Printf("\r(%0.2f%%) Downloaded piece #%d from %d peers", percent, res.index, numWorkers)
-		log.Printf("(%0.2f%%) Downloaded piece #%d from %d peers\n", percent, res.index, numWorkers)
+		fmt.Printf("\r(%0.2f%%) Downloaded piece #%d from %d peers", percent, res.index, numWorkers)
+		//log.Printf("(%0.2f%%) Downloaded piece #%d from %d peers\n", percent, res.index, numWorkers)
 	}
-	//fmt.Printf("\n")
+	fmt.Printf("\n")
 	close(workQueue)
 
 	return buf, nil

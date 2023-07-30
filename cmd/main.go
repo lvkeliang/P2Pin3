@@ -11,12 +11,13 @@ func main() {
 	//inPath := "F:\\torrent\\[ANi] 殭屍 100～在成為殭屍前要做的 100 件事～ - 01 [1080P][Baha][WEB-DL][AAC AVC][CHT].mp4.torrent"
 	outPath := "./downloaded/"
 
-	//newtorrent, err := torrent.NewTorrentFile("./testdata/97806585_p0.jpg", "http://localhost:8090/announce", 12*1024)
-	newtorrent, err := torrent.NewTorrentFile("./testdata/97806585_p0.jpg", "http://localhost:8090/announce", 12*1024)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = newtorrent.SaveTorrentFile("./have/result.json")
+	// newtorrent, err := torrent.NewTorrentFile("./testdata/97806585_p0.jpg", "http://localhost:8090/announce", 12*1024)
+
+	//newtorrent, err := torrent.NewTorrentFile("./testdata/[Nekomoe kissaten][The iDOLM@STER CINDERELLA GIRLS U149][11][1080p][JPSC].mp4", "http://localhost:8090/announce", 12*1024)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	//err = newtorrent.SaveTorrentFile("./have/result.json")
 
 	t, err := torrent.LoadTorrentFile("./have/result.json")
 	if err != nil {

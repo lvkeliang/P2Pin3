@@ -145,8 +145,6 @@ func handleConnection(conn net.Conn, infoHash [20]byte, pieceLength int, bitfieH
 		log.Fatal(err)
 	}
 
-	bitfield := bitfield.Bitfield(make([]byte, 20))
-
 	fileInfo, err := fil.Stat()
 	if err != nil {
 		fmt.Errorf("err: %v\n", err)
@@ -160,9 +158,10 @@ func handleConnection(conn net.Conn, infoHash [20]byte, pieceLength int, bitfieH
 		numPieces++
 	}
 
+	bitfield := bitfield.Bitfield(make([]byte, numPieces))
+
 	buf := make([]byte, pieceLength)
 	for i, hash := range bitfieHashs {
-		fmt.Println("i: ", i)
 		n, err := fil.Read(buf)
 		if err != nil && err != io.EOF {
 			fmt.Errorf("err: %v\n", err)
@@ -175,13 +174,14 @@ func handleConnection(conn net.Conn, infoHash [20]byte, pieceLength int, bitfieH
 		}
 	}
 
-	msg := make([]byte, len(bitfield)+5)
+	msg := make([]byte, numPieces+5)
 	byteLen, err := IntToBytesBigEndian(int64(len(bitfield)+1), 4)
 	copy(msg[:4], byteLen)
 	msg[4] = byte(logic.MsgBitfield)
 	copy(msg[5:], bitfield)
 
-	fmt.Println(msg)
+	//fmt.Printf("%b\n", msg)
+
 	_, err = conn.Write(msg)
 
 	// 将文件指针移动到文件开头
@@ -218,6 +218,7 @@ func handleConnection(conn net.Conn, infoHash [20]byte, pieceLength int, bitfieH
 			binary.BigEndian.PutUint32(msgbuf[0:4], msglen)
 			msgbuf[4] = byte(logic.MsgPiece)
 			copy(msgbuf[5:], buf[:n+8])
+			fmt.Printf("send: index %v, begin %v, length %v\n", index, begin, length)
 			_, err = conn.Write(msgbuf)
 			if err != nil {
 				log.Fatal(err)
@@ -301,6 +302,9 @@ func main() {
 	infoHash := t.InfoHash
 	bitfieHashs := t.PieceHashes
 	pieceLength := 12 * 1024
+
+	//var hashmapPath = "./hashmap/hashmap.json"
+	//hashmap , err:= torrent.ReadInfoHashFile(hashmapPath)
 
 	listener, err := net.Listen("tcp", "localhost:8096")
 	if err != nil {

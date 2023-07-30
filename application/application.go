@@ -101,7 +101,7 @@ func (c *Client) Read() (*logic.Message, error) {
 // SendRequest sends a Request message to the peer
 func (c *Client) SendRequest(index, begin, length int) error {
 	req := logic.FormatRequest(index, begin, length)
-	fmt.Printf("application-SendRequesr-index: %v ,begin: %v ,length: %v\n", index, begin, length)
+	//fmt.Printf("application-SendRequesr-index: %v ,begin: %v ,length: %v\n", index, begin, length)
 	// fmt.Printf("Serialize: %v\n", req.Serialize())
 	_, err := c.Conn.Write(req.Serialize())
 	return err
