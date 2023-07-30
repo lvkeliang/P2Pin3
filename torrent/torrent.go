@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/jackpal/bencode-go"
@@ -46,7 +47,7 @@ type bencodeTorrent struct {
 }
 
 // DownloadToFile downloads a torrent and writes it to a file
-func (t *TorrentFile) DownloadToFile(path string) error {
+func (t *TorrentFile) DownloadToFile(path string, hashmapPath string) error {
 	var peerID [20]byte
 	_, err := rand.Read(peerID[:])
 	if err != nil {
@@ -79,7 +80,7 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 		return err
 	}
 
-	updateInfoHash(t.InfoHash, path, "./hashmap/hashmap.json")
+	UpdateInfoHash(t.InfoHash, path, hashmapPath)
 	return nil
 }
 
@@ -221,7 +222,7 @@ func (t *TorrentFile) requestPeers(peerID [20]byte, port uint16) ([]logic.Peer, 
 }
 
 // 保存为json
-func (tf *TorrentFile) SaveTorrentFile(filename string) error {
+func (tf *TorrentFile) SaveTorrentFile(filePath string, filename string, hashmapPath string) error {
 	// 将结构体编码为 JSON 字符串
 	data, err := json.Marshal(tf)
 	if err != nil {
@@ -234,6 +235,10 @@ func (tf *TorrentFile) SaveTorrentFile(filename string) error {
 		return err
 	}
 
+	err = UpdateInfoHash(tf.InfoHash, filePath, hashmapPath)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -304,15 +309,15 @@ func NewTorrentFile(filename, announce string, pieceLength int) (*TorrentFile, e
 	return torrentFile, nil
 }
 
-func updateInfoHash(infoHash [20]byte, filePath string, infoHashPath string) error {
-	infoHashMap, err := ReadInfoHashFile(infoHashPath)
+func UpdateInfoHash(infoHash [20]byte, filePath string, hashmapPath string) error {
+	infoHashMap, err := ReadInfoHashFile(hashmapPath)
 	if err != nil {
 		return err
 	}
 
-	infoHashMap[filePath] = infoHash
+	infoHashMap[infoHash] = filePath
 
-	err = writeInfoHashFile(infoHashMap, infoHashPath)
+	err = writeInfoHashFile(infoHashMap, hashmapPath)
 	if err != nil {
 		return err
 	}
@@ -320,31 +325,51 @@ func updateInfoHash(infoHash [20]byte, filePath string, infoHashPath string) err
 	return nil
 }
 
-func ReadInfoHashFile(infoHashPath string) (map[string][20]byte, error) {
-	infoHashMap := make(map[string][20]byte)
+func ReadInfoHashFile(hashmapPath string) (map[[20]byte]string, error) {
+	var tempMap map[string]string
 
-	data, err := ioutil.ReadFile(infoHashPath)
+	infoHashMap := make(map[[20]byte]string)
+
+	data, err := ioutil.ReadFile(hashmapPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 
 	if len(data) > 0 {
-		err = json.Unmarshal(data, &infoHashMap)
+		err = json.Unmarshal(data, &tempMap)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	for k, v := range tempMap {
+		// 将编码后的字符串键转换回原始类型[20]byte
+		var key [20]uint8
+		keyBytes, err := hex.DecodeString(k)
+		if err != nil {
+			// 处理错误
+			return nil, err
+		}
+		copy(key[:], keyBytes)
+		infoHashMap[key] = v
+	}
+
 	return infoHashMap, nil
 }
 
-func writeInfoHashFile(infoHashMap map[string][20]byte, infoHashPath string) error {
-	data, err := json.Marshal(infoHashMap)
+func writeInfoHashFile(infoHashMap map[[20]byte]string, hashmapPath string) error {
+	tempMap := make(map[string]string)
+	for k, v := range infoHashMap {
+		// 因为json只能将string作为key，而不能将[20]byte作为key，所以将键转换为字符串
+		keyStr := hex.EncodeToString(k[:])
+		tempMap[keyStr] = v
+	}
+	data, err := json.Marshal(tempMap)
 	if err != nil {
 		return err
 	}
 
-	err = ioutil.WriteFile(infoHashPath, data, 0644)
+	err = ioutil.WriteFile(hashmapPath, data, 0644)
 	if err != nil {
 		return err
 	}

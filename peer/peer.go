@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -47,24 +48,36 @@ func getBitfield(conn net.Conn, pieceLength int, file os.File) (bitfield []byte,
 	return bitfield, err
 }
 
-func Handshake(conn net.Conn, infohash, peerID [20]byte) (*handshake.Handshake, error) {
+func Handshake(conn net.Conn, hashmap map[[20]byte]string, peerID [20]byte) (res *handshake.Handshake, filePath string, err error) {
 	conn.SetDeadline(time.Now().Add(3 * time.Second))
 	defer conn.SetDeadline(time.Time{}) // Disable the deadline
 
-	req := handshake.New(infohash, peerID)
-	_, err := conn.Write(req.Serialize())
+	res, err = handshake.Read(conn)
 	if err != nil {
-		return nil, err
+		return nil, "", fmt.Errorf("%v\n", err)
 	}
 
-	res, err := handshake.Read(conn)
-	if err != nil {
-		return nil, err
+	var infoHash [20]byte
+
+	flag := false
+	for infoHash, filePath = range hashmap {
+		if bytes.Equal(res.InfoHash[:], infoHash[:]) {
+			flag = true
+			break
+		}
 	}
-	if !bytes.Equal(res.InfoHash[:], infohash[:]) {
-		return nil, fmt.Errorf("Expected infohash %x but got %x", res.InfoHash, infohash)
+
+	if flag {
+		req := handshake.New(infoHash, peerID)
+		_, err := conn.Write(req.Serialize())
+		if err != nil {
+			return nil, "", err
+		}
+		return res, filePath, nil
+	} else {
+		return nil, "", fmt.Errorf("no file matches with infohash: %v\n", res.InfoHash)
 	}
-	return res, nil
+
 }
 
 // IntToBytesBigEndian int 转大端 []byte
@@ -115,139 +128,6 @@ func IntToBytesBigEndian(n int64, bytesLength byte) ([]byte, error) {
 	return nil, fmt.Errorf("IntToBytesBigEndian b param is invaild")
 }
 
-func handleConnection(conn net.Conn, infoHash [20]byte, pieceLength int, bitfieHashs [][20]byte, torrentFilename string, filePath string) {
-
-	defer conn.Close()
-
-	var peerID [20]byte
-	_, err := rand.Read(peerID[:])
-	if err != nil {
-		return
-	}
-
-	// 处理握手
-	_, err = Handshake(conn, infoHash, peerID)
-	if err != nil {
-		conn.Close()
-		return
-	}
-
-	// send bitfirld
-
-	//var bit []byte
-	//for n, _ := range bit {
-	//	bit = append(bit, byte(n))
-	//}
-
-	var fil *os.File
-	fil, err = os.Open(filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fileInfo, err := fil.Stat()
-	if err != nil {
-		fmt.Errorf("err: %v\n", err)
-		return
-	}
-	fileSize := fileInfo.Size()
-	fmt.Println("fileSize: ", fileSize)
-
-	numPieces := fileSize / int64(pieceLength)
-	if fileSize%int64(pieceLength) != 0 {
-		numPieces++
-	}
-
-	bitfield := bitfield.Bitfield(make([]byte, numPieces))
-
-	buf := make([]byte, pieceLength)
-	for i, hash := range bitfieHashs {
-		n, err := fil.Read(buf)
-		if err != nil && err != io.EOF {
-			fmt.Errorf("err: %v\n", err)
-			return
-		}
-		if sha1.Sum(buf[:n]) != hash {
-			fmt.Printf("piece %v hash not match\n", i)
-		} else {
-			bitfield.SetPiece(i)
-		}
-	}
-
-	msg := make([]byte, numPieces+5)
-	byteLen, err := IntToBytesBigEndian(int64(len(bitfield)+1), 4)
-	copy(msg[:4], byteLen)
-	msg[4] = byte(logic.MsgBitfield)
-	copy(msg[5:], bitfield)
-
-	//fmt.Printf("%b\n", msg)
-
-	_, err = conn.Write(msg)
-
-	// 将文件指针移动到文件开头
-	_, err = fil.Seek(0, io.SeekStart)
-	if err != nil {
-		fmt.Println("Error seeking to start of file:", err)
-		return
-	}
-
-	//fil.Close()
-
-	requests := make(chan struct {
-		torrentFilename string
-		msg             logic.Message
-	})
-
-	go func() {
-		for req := range requests {
-			index, begin, length, _ := ParseRequest(&req.msg)
-			//file, err := os.Open(filePath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer fil.Close()
-			buf := make([]byte, length+8)
-			binary.BigEndian.PutUint32(buf[0:4], uint32(index))
-			binary.BigEndian.PutUint32(buf[4:8], uint32(begin))
-			n, err := fil.ReadAt(buf[8:], int64(index*pieceLength+begin))
-			if err != nil && err != io.EOF {
-				log.Fatal(err)
-			}
-			msglen := uint32(n + 9)
-			msgbuf := make([]byte, msglen+4)
-			binary.BigEndian.PutUint32(msgbuf[0:4], msglen)
-			msgbuf[4] = byte(logic.MsgPiece)
-			copy(msgbuf[5:], buf[:n+8])
-			fmt.Printf("send: index %v, begin %v, length %v\n", index, begin, length)
-			_, err = conn.Write(msgbuf)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-	}()
-
-	// 处理请求
-	for {
-		msg, err := logic.Read(conn)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if msg == nil {
-			continue
-		}
-		i, j, k, err := ParseRequest(msg)
-		fmt.Printf("msg: index : %v, begin %v, length %v, err %v\n", i, j, k, err)
-		switch msg.ID {
-		case logic.MsgRequest:
-			requests <- struct {
-				torrentFilename string
-				msg             logic.Message
-			}{torrentFilename: torrentFilename, msg: *msg}
-		}
-	}
-}
-
 // ParseRequest parses a REQUEST message
 func ParseRequest(msg *logic.Message) (index, begin, length int, err error) {
 	if msg.ID != logic.MsgRequest {
@@ -295,18 +175,144 @@ func SendPiece(c net.Conn, msg *logic.Message, file *os.File, pieceLength int) e
 	return nil
 }
 
+func handleConnection2(conn net.Conn, hashmapPath, torrentPath string) {
+	defer conn.Close()
+
+	var peerID [20]byte
+	_, err := rand.Read(peerID[:])
+	if err != nil {
+		return
+	}
+
+	hashmap, err := torrent.ReadInfoHashFile(hashmapPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 处理握手
+	_, filePath, err := Handshake(conn, hashmap, peerID)
+	if err != nil {
+		conn.Close()
+		return
+	}
+
+	t, err := torrent.LoadTorrentFile(torrentPath + filepath.Base(filePath) + ".json")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var fil *os.File
+	fil, err = os.Open(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fileInfo, err := fil.Stat()
+	if err != nil {
+		fmt.Errorf("err: %v\n", err)
+		return
+	}
+	fileSize := fileInfo.Size()
+	fmt.Println("fileSize: ", fileSize)
+
+	numPieces := fileSize / int64(t.PieceLength)
+	if fileSize%int64(t.PieceLength) != 0 {
+		numPieces++
+	}
+
+	bitfield := bitfield.Bitfield(make([]byte, numPieces))
+
+	buf := make([]byte, t.PieceLength)
+	for i, hash := range t.PieceHashes {
+		n, err := fil.Read(buf)
+		if err != nil && err != io.EOF {
+			fmt.Errorf("err: %v\n", err)
+			return
+		}
+		if sha1.Sum(buf[:n]) != hash {
+			fmt.Printf("piece %v hash not match\n", i)
+		} else {
+			bitfield.SetPiece(i)
+		}
+	}
+
+	msg := make([]byte, numPieces+5)
+	byteLen, err := IntToBytesBigEndian(int64(len(bitfield)+1), 4)
+	copy(msg[:4], byteLen)
+	msg[4] = byte(logic.MsgBitfield)
+	copy(msg[5:], bitfield)
+
+	//fmt.Printf("%b\n", msg)
+
+	_, err = conn.Write(msg)
+
+	// 将文件指针移动到文件开头
+	_, err = fil.Seek(0, io.SeekStart)
+	if err != nil {
+		fmt.Println("Error seeking to start of file:", err)
+		return
+	}
+
+	requests := make(chan logic.Message)
+
+	go func() {
+		for req := range requests {
+			index, begin, length, _ := ParseRequest(&req)
+			//file, err := os.Open(filePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// 构造回复
+			buf := make([]byte, length+8)
+			binary.BigEndian.PutUint32(buf[0:4], uint32(index))
+			binary.BigEndian.PutUint32(buf[4:8], uint32(begin))
+			n, err := fil.ReadAt(buf[8:], int64(index*t.PieceLength+begin))
+			if err != nil && err != io.EOF {
+				log.Fatal(err)
+			}
+			msglen := uint32(n + 9)
+			msgbuf := make([]byte, msglen+4)
+			binary.BigEndian.PutUint32(msgbuf[0:4], msglen)
+			msgbuf[4] = byte(logic.MsgPiece)
+			copy(msgbuf[5:], buf[:n+8])
+			// fmt.Printf("send: index %v, begin %v, length %v\n", index, begin, length)
+			_, err = conn.Write(msgbuf)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}()
+
+	// 处理请求
+	for {
+		msg, err := logic.Read(conn)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatal(err)
+		}
+
+		if msg == nil {
+			continue
+		}
+
+		i, j, k, err := ParseRequest(msg)
+		fmt.Printf("msg: index : %v, begin %v, length %v, err %v\n", i, j, k, err)
+		switch msg.ID {
+		case logic.MsgRequest:
+			requests <- *msg
+		}
+	}
+}
+
 func main() {
-	var torrentFilename = "./have/result.json"
-	t, err := torrent.LoadTorrentFile(torrentFilename)
-	savePath := "./testdata/"
-	infoHash := t.InfoHash
-	bitfieHashs := t.PieceHashes
-	pieceLength := 12 * 1024
+	var torrentPath = "./have/"
+	var hashmapPath = "./hashmap/hashmap.json"
+	//var dataPath = "./testdata/"
 
-	//var hashmapPath = "./hashmap/hashmap.json"
-	//hashmap , err:= torrent.ReadInfoHashFile(hashmapPath)
-
-	listener, err := net.Listen("tcp", "localhost:8096")
+	listener, err := net.Listen("tcp", "localhost:8097")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -317,7 +323,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		go handleConnection(conn, infoHash, pieceLength, bitfieHashs, torrentFilename, savePath+t.Name)
+		go handleConnection2(conn, hashmapPath, torrentPath)
 	}
 }

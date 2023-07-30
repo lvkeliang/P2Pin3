@@ -10,16 +10,21 @@ import (
 func main() {
 	//inPath := "F:\\torrent\\[ANi] 殭屍 100～在成為殭屍前要做的 100 件事～ - 01 [1080P][Baha][WEB-DL][AAC AVC][CHT].mp4.torrent"
 	outPath := "./downloaded/"
+	var hashmapPath = "./hashmap/hashmap.json"
+	name := "[Nekomoe kissaten][The iDOLM@STER CINDERELLA GIRLS U149][11][1080p][JPSC].mp4"
 
-	// newtorrent, err := torrent.NewTorrentFile("./testdata/97806585_p0.jpg", "http://localhost:8090/announce", 12*1024)
+	filePath := "./testdata/" + name
+	newtorrent, err := torrent.NewTorrentFile(filePath, "http://localhost:8090/announce", 12*1024)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	//newtorrent, err := torrent.NewTorrentFile("./testdata/[Nekomoe kissaten][The iDOLM@STER CINDERELLA GIRLS U149][11][1080p][JPSC].mp4", "http://localhost:8090/announce", 12*1024)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//err = newtorrent.SaveTorrentFile("./have/result.json")
+	err = newtorrent.SaveTorrentFile(filePath, "./have/"+name+".json", hashmapPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	t, err := torrent.LoadTorrentFile("./have/result.json")
+	t, err := torrent.LoadTorrentFile("./have/" + name + ".json")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -39,7 +44,7 @@ func main() {
 		}
 	}
 
-	err = t.DownloadToFile(outPath + t.Name)
+	err = t.DownloadToFile(outPath+t.Name, hashmapPath)
 	if err != nil {
 		log.Fatal(err)
 	}
